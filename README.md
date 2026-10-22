@@ -1,228 +1,216 @@
-# WRP - Web Rendering Proxy
+# min3 Chat
 
-A browser-in-browser "proxy" server that allows to use historical / vintage web browsers on the modern web. It has two modes:
+Render（Node.js）+ Supabase（PostgreSQL / Auth / Realtime）で動くチャットアプリです。
+UIは付属のダークテーマHTMLをベースにしています。
 
-- ISMAP "graphical" mode, renders web page in to a GIF, PNG or JPG image with clickable imagemap.
-- Simple HTML "text" mode converts web page in to Markdown, then renders it into simplified HTML for old browsers.
+## 構成
 
-![Internet Explorer 1.5 doing Gmail](wrp.png)
-
-## Usage Instructions
-
-* [Download a WRP binary](https://github.com/tenox7/wrp/releases/) run it on a machine that will become your WRP gateway/server. This should be modern hardware and OS. Google Chrome / Chromium Browser is required to be preinstalled. Do not try to run WRP on an old machine like Windows XP or 98.
-* Make sure you have disabled firewall or open port WRP is listening on (by default 8080).
-* Point your legacy browser to `http://address:port` of the WRP server. Do not set or use it as a "proxy server".
-* Type a search string or a full http/https URL and click **Go**.
-* Select whether you want to use graphical (ISMAP) or simple HTML mode.
-
-### Image Map Mode
-
-* Adjust your screen **W**idth/**H**eight/**S**cale/**C**olors to fit in your old browser.
-* Scroll web page by clicking on the in-image scroll bar on the right.
-* WRP also allows **a single tall image without the vertical scrollbar** and use client scrolling. To enable this, simply height **H** to `0` (or flag `-g 1152x0x216`. However this should not be used with old and low spec clients. Such tall images will be very large, take a lot of memory and long time to process, especially for GIFs.
-* Do not use client browser history-back, instead use **Bk** button in the app.
-* You can re-capture screenshot without reloading page by using **St** (Stop). This is useful if page didn't render fully before screenshot is taken.
-* You can also reload page and re-capture screenshot with **Re** (Reload).
-* To send keystrokes, fill **K** input box and press **Go**. There also are buttons for backspace, enter and arrow keys.
-* The default image type GIP is a ultra fast, optimized, parallel encoded GIF type.
-* If your browser supports it, prefer PNG over GIF/JPG. PNG is much faster, whereas GIF/JPG requires a lot of additional processing on both client and server to encode/decode.
-* GIF images are by default encoded with 216 colors, "web safe" palette. This uses an ultra fast but not very accurate color mapping algorithm. If you want better color representation switch to 256 color mode.
-
-### Simple HTML mode
-
-* Select image type PNG/GIF/JPG. Each individual image from the original web site will be converted to the selected format.
-* Type maximum image size in pixels.
-
-## UI explanation
-
-The first unnamed input box is either search (google) or URL starting with http/https
-
-`Go` Navigate to the url or perform search
-
-`Bk` History Back
-
-`St` Stop, also re-capture screenshot without refreshing page, for example if page
-render takes a long time or it updates / changes periodically
-
-`Re` Remote Reload / Refresh
-
-`Up` Page Up
-
-`Dn` Page Down
-
-`W` is width in pixels, adjust it to get rid of horizontal scroll bar
-
-`H` is height in pixels, adjust it to get rid of vertical scroll bar.
-It can also be set to 0 to produce one very tall image and use
-client scroll. This 0 size is experimental, buggy and should be
-used with PNG and lots of memory on a client side.
-
-`Z` Zoom or scale
-
-`M` Mode - ISMAP (clickable imagemap) or simple HTML mode
-
-`T` Image type PNG / GIF / JPEG
-
-`C` Colors, for GIF images only
-
-`K` Keystroke input, you can type some letters in it and when you click Go it will be typed in the remote browser.
-
-`Bs` Backspace
-
-`Rt` Return / enter
-
-### UI Customization
-
-WRP supports customizing it's own UI using HTML Template file. Download [wrp.html](wrp.html) place in the same directory with wrp binary customize it to your liking.
-
-## Docker
-
-https://hub.docker.com/r/tenox7/wrp
-
-```shell
-$ docker run -d --rm -p 8080:8080 tenox7/wrp:latest
+```
+min3-chat/
+├── package.json          # 依存関係 + startスクリプト
+├── .env.example          # 環境変数のサンプル
+├── server.js             # Express（API + 静的配信）
+├── supabase.sql          # テーブル定義 + RLS
+├── README.md
+└── public/
+    ├── index.html        # DOM
+    ├── style.css         # 付属HTMLのスタイルをそのまま移設
+    └── app.js            # フロントロジック（API + Realtime）
 ```
 
-## AWS
+- **Render**: `server.js` がREST APIとフロント配信を担当
+- **Supabase**: データ永続化 + Auth + Realtime
+- フロントとAPIは同一オリジンなので CORS 設定は不要
 
-It's possible to run WRP on AWS App Runner.
+---
 
-First you need to upload the Docker image to ECR - [Instructions](https://docs.aws.amazon.com/AmazonECR/latest/userguide/docker-push-ecr-image.html).
+## 1. Supabase のセットアップ
 
-Create App Runner service using the uploaded image using the AWS Console or CLI.
+### 1-1. プロジェクト作成
+1. https://supabase.com/ にログインし「New project」を作成
+2. プロジェクト名・DBパスワード・リージョン（`Northeast Asia (Tokyo)` 推奨）を設定
+3. 作成完了まで数分待つ
 
-[AWS Console](https://console.aws.amazon.com/apprunner/home#/create)
+### 1-2. スキーマ適用
+1. 左メニュー「SQL Editor」を開く
+2. リポジトリの `supabase.sql` の内容を貼り付けて「Run」
+3. 成功したら「Table Editor」で以下が作成されていることを確認
+   - `profiles` / `rooms` / `room_members` / `messages`
 
-```shell
-aws apprunner create-service --service-name my-app-runner-service --source-configuration '{
-    "ImageRepository": {
-        "ImageIdentifier": "<account_id>.dkr.ecr.<region>.amazonaws.com/wrp:latest",
-        "ImageRepositoryType": "ECR",
-        "ImageConfiguration": {"Port": "8000"},
-        "AutoDeploymentsEnabled": true
-    }
-}' --instance-configuration '{
-    "Cpu": "1024",
-    "Memory": "2048",
-    "InstanceRoleArn": "arn:aws:iam::<account_id>:role/AppRunnerECRAccessRole"
-}'
+### 1-3. Realtime 有効化の確認
+1. 左メニュー「Database」→「Replication」
+2. `supabase_realtime` publication に `messages` が含まれていることを確認
+   （`supabase.sql` の `alter publication ... add table` で追加済み）
+
+### 1-4. キーの取得
+左メニュー「Project Settings」→「API」で以下を控える：
+
+| 名前 | 用途 | 公開範囲 |
+|---|---|---|
+| `Project URL` | 接続先 | 公開OK |
+| `anon public` key | フロントのRealtime購読 | 公開OK |
+| `service_role` key | RenderのAPIからDB操作 | **絶対に非公開** |
+
+---
+
+## 2. ローカルでの動作確認
+
+### 2-1. 依存関係のインストール
+```bash
+npm install
 ```
 
-## Azure Container Instances
+### 2-2. 環境変数の設定
+`.env.example` をコピーして `.env` を作成：
 
-[Azure Console](https://portal.azure.com/#create/Microsoft.ContainerInstances)
-
-CLI:
-
-```shell
-$ az container create --resource-group wrp --name wrp --image tenox7/wrp:latest --cpu 1 --memory 2 --ports 80 --protocol tcp --os-type Linux --ip-address Public --command-line '/wrp -l :80 -t png -g 1280x0x256'
+```bash
+cp .env.example .env
 ```
 
-## Google Cloud Run
+`.env` を編集：
 
-```shell
-$ gcloud run deploy --platform managed --image=tenox7/wrp:latest --memory=2Gi --args='-t=png','-g=1280x0x256'
+```env
+SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=eyJhbGciOi...（service_role key）
+JWT_SECRET=ローカル用のランダム文字列（例: openssl rand -hex 32 で生成）
+PORT=3000
 ```
 
-Unfortunately Google Cloud Run forces you to use HTTPS, which likely won't work with old browsers.
+### 2-3. フロントのSupabase設定
+`public/index.html` の `<head>` 内を編集：
 
-
-## Flags
-
-```text
--l   listen address:port (default :8080)
--m   mode, either ismap (graphical) or html
--t   image type gif, png or jpg (default gif)
--g   image geometry, WxHxC, height can be 0 for unlimited (default 1152x600x216)
-     C (number of colors) is only used for GIF
--q   Jpeg image quality, default 75%
--h   headless mode, hide browser window on the server (default true)
--n   do not free maps and images after use (default false)
--ui  html template file (default "wrp.html")
--ua  user agent, override the default "headless" agent (only for ismap mode)
--s   delay/sleep after page is rendered before screenshot is taken (default 2s)
--b   browser executable path (e.g., for Brave Browser)
+```html
+<script>
+  window.__SUPABASE_URL__ = 'https://xxxxxxxxxxxx.supabase.co';
+  window.__SUPABASE_ANON_KEY__ = 'eyJhbGciOi...（anon key）';
+</script>
 ```
 
-## Minimal Requirements
-
-* Server/Gateway requires modern hardware and operating system that is supported by [Go language](https://github.com/golang/go/wiki/MinimumRequirements) and Chrome/Chromium Browser, which must be installed.
-* Client Browser needs to support `HTML FORMs` and `ISMAP`. Typically [Mosaic 2.0](http://www.ncsa.illinois.edu/enabling/mosaic/versions) would be minimum version for forms. However ISMAP was supported since 0.6B, so if you manually enter url using `?url=...`, you can use the earlier version.
-
-## FAQ
-
-### I can't get it to run
-
-This program does not have a GUI and is run from the command line. After downloading, you may need to enable executable bit on Unix systems, for example:
-
-```shell
-$ cd ~/Downloads
-$ chmod +x wrp-amd64-macos
-$ ./wrp-amd64-macos
+### 2-4. 起動
+```bash
+npm start
 ```
 
-### Pages are chopped off
+http://localhost:3000 を開き、以下を確認：
 
-Click `st` to re-capture screenshot. You may want to increase the page delay using `-s` flag.
+1. 「アカウント作成」でユーザー登録できる
+2. ログイン後、全体チャットが表示される
+3. メッセージを送信すると即時表示される
+4. **別ブラウザ（シークレットウィンドウ等）で別ユーザーとしてログイン**し、同じルームでメッセージが相互に反映される（Realtime）
+5. 「＋」からルーム作成できる
+6. プライベートルームは作成者以外の一覧に出ない
 
-### Websites are blocking headless browsers
+---
 
-This is a well known issue. WRP has some provisions to work around it, but it's a cat and mouse game. By default WRP tries to obtain some current valid User Agent
-from https://github.com/jnrbsn/user-agents rather than using the internal "HeadlessChrome". You can override this to your own, for example:
+## 3. Render へのデプロイ
 
-```shell
-$ wrp -ua="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+### 3-1. GitHub リポジトリ作成
+```bash
+git init
+git add .
+git commit -m "initial commit"
+git branch -M main
+git remote add origin https://github.com/<your-name>/min3-chat.git
+git push -u origin main
 ```
 
-### Why is WRP called "proxy" when it's not
+> `.env` は **コミットしない**（`.gitignore` に含める）。
 
-WRP originally started as true http proxy. However this stopped working because the whole internet is now encrypted thanks to [Let's Encrypt](https://en.wikipedia.org/wiki/Let%27s_Encrypt). Legacy browsers do not support modern SSL/TLS certs as well as [HTTP CONNECT](https://en.wikipedia.org/wiki/HTTP_tunnel#HTTP_CONNECT_method) so this mode had to be disabled.
+### 3-2. Render で Web Service 作成
+1. https://render.com/ にログイン
+2. 「New」→「Web Service」
+3. GitHub リポジトリを接続
+4. 以下を設定：
 
-Some efforts (ssl strip) are under way but it's very [difficult](https://en.wikipedia.org/wiki/HTTP_tunnel#HTTP_CONNECT_method) to do it correctly and the priority is rather low.
+| 項目 | 値 |
+|---|---|
+| Name | `min3-chat`（任意） |
+| Region | `Singapore` または `Oregon` |
+| Branch | `main` |
+| Root Directory | （空欄） |
+| Runtime | `Node` |
+| Build Command | `npm install` |
+| Start Command | `npm start` |
+| Instance Type | Free（動作確認用） |
 
-### Why isn't there a Docker image for armv6
+5. 「Advanced」→「Add Environment Variable」で以下を追加：
 
-Because https://hub.docker.com/r/chromedp/headless-shell/ doesn't have one. WRP uses that image. If you have a fork that builds for armv6 let me know.
+| Key | Value |
+|---|---|
+| `SUPABASE_URL` | SupabaseのProject URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | service_role key |
+| `JWT_SECRET` | `openssl rand -hex 32` などで生成したランダム文字列 |
 
-### WTF is GIP image format
+> `PORT` はRenderが自動で注入するため設定不要です。`server.js` は `process.env.PORT` を参照します。
 
-It's just GIF but optimized. Avoids dithering, uses fast color palette and parallel encoding. https://github.com/tenox7/gip
+6. 「Health Check Path」に `/health` を設定
+7. 「Create Web Service」でデプロイ開始
 
-## History
+### 3-3. デプロイ後の確認
+- 発行されたURL（例: `https://min3-chat.onrender.com`）を開く
+- ローカルと同じ操作ができることを確認
+- 別ユーザーでログインし、Realtimeが動作することを確認
 
-* Version 1.0 (2014) started as a *cgi-bin* script, adaptation of `webkit2png.py` and `pcidade.py`, [blog post](https://virtuallyfun.com/2014/03/03/surfing-modern-web-with-ancient-browsers/).
-* Version 2.0 became a stand alone http-proxy server, supporting both Linux and MacOS, [another post](https://virtuallyfun.com/wordpress/2014/03/11/web-rendering-proxy-update//).
-* In 2016 thanks to [Let's Encrypt](https://en.wikipedia.org/wiki/Let%27s_Encrypt) the whole internet migrated to HTTPS/SSL/TLS and WRP largely stopped working. Python code became unmaintainable and there was no easy way to make it work on Windows, even under WSL.
-* Version 3.0 (2019) has been rewritten in [Go](https://golang.org/) using [Chromedp](https://github.com/chromedp) as browser-in-browser instead of http-proxy. The initial version was [less than 100 lines of code](https://gist.github.com/tenox7/b0f03c039b0a8b67f6c1bf47e2dd0df0).
-* Version 4.0 has been completely refactored to use mouse clicks via imagemap instead parsing a href nodes.
-* Version 4.1 added sending keystrokes in to input boxes. You can now login to Gmail. Also now runs as a Docker container and on Cloud Run/Azure Containers.
-* Version 4.5 introduces rendering whole pages in to a single tall image with client scrolling.
-* Version 4.6 adds blazing fast gif encoding by [Hill Ma](https://github.com/mahiuchun).
-* Version 4.6.3 adds arm64 / aarch64 Docker container support - you can run it on Raspberry PI!
-* Version 4.7 add simple html aka reader aka text mode.
-* Version 4.8 add image support to simple html mode.
-* Version 4.9 adds support for ultra fast, parallel encoded gif image (GIP)
+> **Free プランの注意**: 15分間アクセスがないとスリープし、次回アクセス時に起動まで30秒ほどかかります。
 
-## Credits
+---
 
-* Uses [chromedp](https://github.com/chromedp), thanks to [mvdan](https://github.com/mvdan) for dealing with my issues
-* Uses [go-quantize](https://github.com/ericpauley/go-quantize), thanks to [ericpauley](https://github.com/ericpauley) for developing the missing go quantizer
-* Thanks to Jason Stevens of [Fun With Virtualization](https://virtuallyfun.com/) for graciously hosting my rumblings
-* Thanks to [claunia](https://github.com/claunia/) for help with the Python/Webkit version in the past
-* Thanks to [Hill Ma](https://github.com/mahiuchun) for ultra fast gif encoding algorithm
-* Historical Python/Webkit versions and prior art can be seen in [wrp-old](https://github.com/tenox7/wrp-old) repo
+## 4. 本番化に向けた改善ポイント
 
-## Related
+現状は動作確認用の最小構成です。本番運用時は以下を検討してください。
 
-You may also be interested in:
+### セキュリティ
+- **管理画面のパスワード**（`app.js` の `ADMIN_PASSWORD = 'admin'`）はクライアントに露出しています。本番では管理APIをサーバー側に移し、管理者ロールをDBで管理してください。
+- **JWTの保存先**: 現在は `localStorage`。XSS耐性を高めるなら `HttpOnly` Cookie + CSRF対策に変更。
+- **レート制限**: `express-rate-limit` で `/api/signup`・`/api/login`・`/api/messages` を制限。
+- **入力サニタイズ**: 現状は `textContent` で描画しているためXSSは起きにくいですが、リンク化やMarkdown対応をする際は注意。
 
-* [VncFox](https://github.com/tenox7/vncfox)
-* [Browservice](https://github.com/ttalvitie/browservice)
-* [Browsh](https://github.com/browsh-org/browsh)
+### 機能
+- **メンバー一覧API**: `/api/rooms/:id/members` を追加し、詳細パネルに反映
+- **退出API**: `DELETE /api/rooms/:id/members/me` を追加
+- **リアクション永続化**: `reactions` テーブルを追加
+- **既読管理**: `message_reads` テーブルを追加
+- **ユーザー一覧API（管理画面用）**: `/api/admin/users` を追加し、管理者JWTで保護
 
-## Legal Stuff
+### 運用
+- **Realtimeの名前解決**: 現状は受信後に再取得していますが、`messages` に `username` を非正規化保存するか、Supabase Broadcast に切り替えると効率的です。
+- **レンダーの有料プラン**: スリープ回避のため Starter 以上を推奨。
+- **ログ**: `pino` などで構造化ログを出力し、Renderのログ画面で確認。
 
-```text
-License: Apache 2.0
-Copyright (c) 2013-2025 Antoni Sawicki
+---
+
+## 5. トラブルシューティング
+
+| 症状 | 原因 / 対処 |
+|---|---|
+| ログインで「通信に失敗しました」 | `SUPABASE_URL` / `SERVICE_ROLE_KEY` の設定ミス。Renderの環境変数を確認 |
+| メッセージが他ユーザーに届かない | `messages` テーブルのRealtimeがOFF。Supabaseの Replication 設定を確認 |
+| プライベートルームが一覧に出ない | 仕様通り（参加者のみ表示）。`room_members` に自分がいるか確認 |
+| デプロイ後500エラー | Renderのログで `Missing env` が出ていないか確認 |
+| Realtimeで名前が「...」になる | 仕様（payloadにjoin結果が無いため）。300ms後に再取得して解決 |
+
+---
+
+## ライセンス
+
+MIT
 ```
+
+---
+
+### 補足
+
+- **`.gitignore`** を忘れずに作成してください。最低限以下を含めます：
+
+```gitignore
+node_modules/
+.env
+.DS_Store
+*.log
+```
+
+- **`.env.example`** は既に提示済みの内容をそのまま配置してください。
+
+---
+
+セットアップ中にエラーが出た場合や、メンバー一覧API・退出APIなど次の機能拡張に進みたい場合は、いつでもお知らせください。
